@@ -165,16 +165,7 @@ happen to contain the text "Error" now parse successfully.
 
 ## New features
 
-- **Server-sent events support.** Finite streams: `IScenarioResult.ReadAsServerSentEvents()` and
-  `ReadAsServerSentEvents<T>()` parse a buffered response body as `SseItem<T>` values, with the
-  typed overload deserializing each data payload through the application's JSON options. Live
-  streams: `IAlbaHost.StreamServerSentEvents(Action<Scenario>, CancellationToken)` opens an
-  unbuffered event stream that yields events as the application writes them; all
-  `BeforeEach`/`BeforeEachAsync` actions and the security extensions apply exactly as they do for
-  scenarios. Disposing the returned `SseStreamResult` aborts the request on the server (cancelling
-  `HttpContext.RequestAborted`) and then runs `AfterEach`/`AfterEachAsync` actions with a `null`
-  `HttpContext`. Response assertions other than the expected status code are not supported on the
-  streaming path and are rejected up front.
+- **Server-sent events support.** See the [docs page](https://github.com/JasperFx/alba/blob/master/docs/scenarios/sse.md)
 - **HTTP QUERY support.** Scenarios can issue HTTP QUERY requests via `Scenario.Query`, matching
   the existing verb properties (`x.Query.Url("/api/query")`).
 - **Time-travel testing with `TimeProviderOverride`.** A `FakeTimeProvider`-based extension that
