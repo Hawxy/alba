@@ -2,6 +2,7 @@
 using System.Net;
 using System.Security.Claims;
 using Alba.Assertions;
+using Alba.Internal;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 
@@ -17,8 +18,10 @@ public class Scenario : IUrlExpression
 
     private readonly List<IScenarioAssertion> _assertions = new();
     private readonly List<Action<HttpContext>> _setups = new();
+    internal List<Func<Task>> AsyncPreparations { get; } = new();
     private readonly AlbaHost _system;
-    private int _expectedStatusCode = 200;
+    // Null means the default expectation: any 200-299 status code
+    private int? _expectedStatusCode;
     private bool _ignoreStatusCode;
         
     internal Scenario(AlbaHost system)
@@ -113,9 +116,25 @@ public class Scenario : IUrlExpression
         }
     }
 
+    /// <summary>
+    /// Specify an HTTP QUERY Url
+    /// </summary>
+    public IUrlExpression Query
+    {
+        get
+        {
+            ConfigureHttpContext(context => context.HttpMethod("QUERY"));
+            return this;
+        }
+    }
+
     internal List<Claim> Claims { get; } = new();
-    internal List<string> RemovedClaims { get; } = new(); 
+    internal List<string> RemovedClaims { get; } = new();
     internal Exception? Exception { get; set; }
+
+    internal int? ExpectedStatusCode => _expectedStatusCode;
+    internal bool StatusCodeIgnored => _ignoreStatusCode;
+    internal bool HasResponseAssertions => _assertions.Count > 0;
 
 
     SendExpression IUrlExpression.Url([StringSyntax(StringSyntaxAttribute.Uri)]string relativeUrl)
@@ -153,16 +172,14 @@ public class Scenario : IUrlExpression
     {
         var values = new Dictionary<string, string>();
 
-        var properties = typeof(T).GetProperties().Where(x => x.CanWrite && x.CanRead);
+        var (properties, fields) = TypeMemberCache.MembersOf(typeof(T));
 
-        foreach (var prop in properties)
+        foreach (var prop in properties.Where(x => x.CanWrite))
         {
             var rawValue = prop.GetValue(target, null);
 
             values.Add(prop.Name, rawValue?.ToString() ?? string.Empty);
         }
-
-        var fields = typeof(T).GetFields();
 
         foreach (var field in fields)
         {
@@ -263,13 +280,15 @@ public class Scenario : IUrlExpression
         if (jsonStyle == JsonStyle.Mvc) jsonStrategy = _system.MvcStrategy;
         if (jsonStyle == JsonStyle.MinimalApi) jsonStrategy = _system.MinimalApiStrategy;
             
+        // Serialization happens in the awaited preparation phase before the
+        // request executes; the setup callback applies the resulting stream
+        Stream? stream = null;
+        AsyncPreparations.Add(async () => stream = await jsonStrategy!.WriteAsync(input));
+
         ConfigureHttpContext(c =>
         {
-                
-            var stream = jsonStrategy!.Write(input);
-
             c.Request.ContentType = "application/json";
-            c.Request.Body = stream;
+            c.Request.Body = stream!;
             c.Request.Body.Position = 0;
             c.Request.ContentLength = c.Request.Body.Length;
         });
@@ -292,7 +311,11 @@ public class Scenario : IUrlExpression
         var assertionContext = new AssertionContext(context, _assertionRecords);
         if (!_ignoreStatusCode)
         {
-            new StatusCodeAssertion(_expectedStatusCode).Assert(this, assertionContext);
+            IScenarioAssertion statusAssertion = _expectedStatusCode.HasValue
+                ? new StatusCodeAssertion(_expectedStatusCode.Value)
+                : new StatusCodeSuccessAssertion();
+
+            statusAssertion.Assert(this, assertionContext);
         }
 
         foreach (var assertion in _assertions) assertion.Assert(this, assertionContext);
@@ -308,6 +331,7 @@ public class Scenario : IUrlExpression
     public Scenario StatusCodeShouldBe(HttpStatusCode httpStatusCode)
     {
         _expectedStatusCode = (int) httpStatusCode;
+        _ignoreStatusCode = false;
         return this;
     }
 
@@ -318,6 +342,20 @@ public class Scenario : IUrlExpression
     public void StatusCodeShouldBe(int statusCode)
     {
         _expectedStatusCode = statusCode;
+        _ignoreStatusCode = false;
+    }
+
+    /// <summary>
+    ///     Expect any Http Status Code between 200 and 299. This is the default
+    ///     expectation for every scenario; call this to restore it after
+    ///     StatusCodeShouldBe(...) or IgnoreStatusCode()
+    /// </summary>
+    /// <returns></returns>
+    public Scenario StatusCodeShouldBeSuccess()
+    {
+        _expectedStatusCode = null;
+        _ignoreStatusCode = false;
+        return this;
     }
 
     /// <summary>

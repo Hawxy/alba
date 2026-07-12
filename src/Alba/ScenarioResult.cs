@@ -1,3 +1,5 @@
+using System.Net.ServerSentEvents;
+using System.Text.Json;
 using System.Xml;
 using System.Xml.Serialization;
 using Alba.Internal;
@@ -32,20 +34,7 @@ public class ScenarioResult : IScenarioResult
     /// <inheritdoc />
     public XmlDocument? ReadAsXml()
     {
-        Func<Stream, XmlDocument?> read = s =>
-        {
-            var body = s.ReadAllText();
-
-            if (body.Contains("Error"))
-            {
-                return null;
-            }
-
-            var document = new XmlDocument();
-            document.LoadXml(body);
-
-            return document;
-        };
+        Func<Stream, XmlDocument?> read = s => tryParseXml(s.ReadAllText());
 
         return Read(read);
     }
@@ -53,22 +42,24 @@ public class ScenarioResult : IScenarioResult
     /// <inheritdoc />
     public Task<XmlDocument?> ReadAsXmlAsync()
     {
-        Func<Stream, Task<XmlDocument?>> read = async s =>
-        {
-            var body = await s.ReadAllTextAsync();
-
-            if (body.Contains("Error"))
-            {
-                return null;
-            }
-
-            var document = new XmlDocument();
-            document.LoadXml(body);
-
-            return document;
-        };
+        Func<Stream, Task<XmlDocument?>> read = async s => tryParseXml(await s.ReadAllTextAsync());
 
         return Read(read);
+    }
+
+    private static XmlDocument? tryParseXml(string body)
+    {
+        var document = new XmlDocument();
+        try
+        {
+            document.LoadXml(body);
+        }
+        catch (XmlException)
+        {
+            return null;
+        }
+
+        return document;
     }
 
     /// <inheritdoc />
@@ -89,6 +80,22 @@ public class ScenarioResult : IScenarioResult
     public Task<T> ReadAsJsonAsync<T>()
     {
         return _system.DefaultJson.ReadAsync<T>(this);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<SseItem<string>> ReadAsServerSentEvents()
+    {
+        // The response body is a fully buffered MemoryStream, so the
+        // synchronous parse never touches server streams
+        return Read(s => SseParser.Create(s).Enumerate().ToList());
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<SseItem<T>> ReadAsServerSentEvents<T>()
+    {
+        return Read(s => SseParser
+            .Create(s, (_, data) => JsonSerializer.Deserialize<T>(data, _system.StjJsonOptions)!)
+            .Enumerate().ToList());
     }
 
     public T Read<T>(Func<Stream, T> read)

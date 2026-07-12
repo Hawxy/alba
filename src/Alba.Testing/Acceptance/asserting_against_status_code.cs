@@ -1,4 +1,5 @@
-﻿using System.Net;
+using Microsoft.AspNetCore.Http;
+using System.Net;
 using Shouldly;
 
 namespace Alba.Testing.Acceptance
@@ -12,9 +13,7 @@ namespace Alba.Testing.Acceptance
             {
                 c.Response.StatusCode = 200;
                 c.Response.ContentType("text/plain");
-                c.Response.Write("Some text");
-
-                return Task.CompletedTask;
+                return c.Response.WriteAsync("Some text");
             };
 
             return host.Scenario(x =>
@@ -31,9 +30,7 @@ namespace Alba.Testing.Acceptance
             {
                 c.Response.StatusCode = 200;
                 c.Response.ContentType("text/plain");
-                c.Response.Write("Some text");
-
-                return Task.CompletedTask;
+                return c.Response.WriteAsync("Some text");
             };
 
             var ex = await Exception<ScenarioAssertionException>.ShouldBeThrownBy(() =>
@@ -54,9 +51,7 @@ namespace Alba.Testing.Acceptance
             router.Handlers["/wrong/status/code"] = c =>
             {
                 c.Response.StatusCode = 500;
-                c.Response.Write("the error text");
-
-                return Task.CompletedTask;
+                return c.Response.WriteAsync("the error text");
             };
 
             var ex = await fails(_ =>
@@ -64,31 +59,49 @@ namespace Alba.Testing.Acceptance
                 _.Get.Url("/wrong/status/code");
             });
 
-            ex.Message.ShouldContain("Expected status code 200, but was 500");
+            ex.Message.ShouldContain("Expected a status code between 200 and 299, but was 500");
             ex.Message.ShouldContain("the error text");
         }
 
-        [Fact]
-        public async Task using_scenario_with_StatusCodeShouldBeSuccess_happy_path()
+        [Theory]
+        [InlineData(200)]
+        [InlineData(201)]
+        [InlineData(204)]
+        [InlineData(299)]
+        public Task success_status_codes_pass_by_default(int statusCode)
         {
             router.Handlers["/one"] = c =>
             {
-                c.Response.StatusCode = 204;
+                c.Response.StatusCode = statusCode;
                 c.Response.ContentType("text/plain");
-                c.Response.Write("Some text");
-
-                return Task.CompletedTask;
+                return c.Response.WriteAsync("Some text");
             };
 
-            var ex = await Exception<ScenarioAssertionException>.ShouldBeThrownBy(() =>
+            return host.Scenario(x =>
             {
-                return host.Scenario(x =>
-                {
-                    x.Get.Url("/one");
-                    x.StatusCodeShouldBeSuccess();
-                });
+                x.Get.Url("/one");
             });
+        }
 
+        [Theory]
+        [InlineData(200)]
+        [InlineData(201)]
+        [InlineData(204)]
+        [InlineData(299)]
+        public Task using_scenario_with_StatusCodeShouldBeSuccess_happy_path(int statusCode)
+        {
+            router.Handlers["/one"] = c =>
+            {
+                c.Response.StatusCode = statusCode;
+                c.Response.ContentType("text/plain");
+                return c.Response.WriteAsync("Some text");
+            };
+
+            return host.Scenario(x =>
+            {
+                x.Get.Url("/one");
+                x.StatusCodeShouldBeSuccess();
+            });
         }
 
         [Fact]
@@ -98,9 +111,7 @@ namespace Alba.Testing.Acceptance
             {
                 c.Response.StatusCode = 500;
                 c.Response.ContentType("text/plain");
-                c.Response.Write("Some text");
-
-                return Task.CompletedTask;
+                return c.Response.WriteAsync("Some text");
             };
 
             var ex = await Exception<ScenarioAssertionException>.ShouldBeThrownBy(() =>
@@ -112,7 +123,30 @@ namespace Alba.Testing.Acceptance
                 });
             });
 
-            ex.Message.ShouldContain("Expected status code 200, but was 500");
+            ex.Message.ShouldContain("Expected a status code between 200 and 299, but was 500");
+        }
+
+        [Fact]
+        public async Task explicit_status_code_expectation_wins_over_ignore()
+        {
+            router.Handlers["/one"] = c =>
+            {
+                c.Response.StatusCode = 200;
+                c.Response.ContentType("text/plain");
+                return c.Response.WriteAsync("Some text");
+            };
+
+            var ex = await Exception<ScenarioAssertionException>.ShouldBeThrownBy(() =>
+            {
+                return host.Scenario(x =>
+                {
+                    x.Get.Url("/one");
+                    x.IgnoreStatusCode();
+                    x.StatusCodeShouldBe(500);
+                });
+            });
+
+            ex.Message.ShouldContain("Expected status code 500, but was 200");
         }
 
     }

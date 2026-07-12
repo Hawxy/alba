@@ -9,6 +9,8 @@ public class SystemTextJsonSerializer : IJsonStrategy
 {
     private readonly JsonSerializerOptions _options;
 
+    internal JsonSerializerOptions Options => _options;
+
     public SystemTextJsonSerializer(IAlbaHost host)
     {
         var options = host.Services.GetService<IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>> ();
@@ -16,11 +18,11 @@ public class SystemTextJsonSerializer : IJsonStrategy
         _options = options?.Value.SerializerOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web);
     }
 
-    public Stream Write<T>(T body)
+    public Task<Stream> WriteAsync<T>(T body)
     {
         var stream = new MemoryStream();
         JsonSerializer.Serialize(new Utf8JsonWriter(stream), body, _options);
-        return stream;
+        return Task.FromResult<Stream>(stream);
     }
 
     public T Read<T>(ScenarioResult response)

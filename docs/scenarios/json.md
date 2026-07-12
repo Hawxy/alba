@@ -1,7 +1,9 @@
 # Sending and Checking Json
 
 JSON serialization is done with the configured input and output formatters within the underlying application. This means that
-Alba can support systems using both System.Text.Json and Newtonsoft.Json.
+Alba can support systems using both System.Text.Json and Newtonsoft.Json. Alba picks the application's System.Text.Json or
+Newtonsoft.Json formatters even when other registered formatters (such as ASP.NET Core OData's) also advertise
+`application/json`, so the JSON helpers work in applications that mix OData and plain API controllers.
 
 ## Sending Json
 
@@ -46,6 +48,21 @@ public async Task send_json_minimal_api(IAlbaHost host)
 ```
 <sup><a href='https://github.com/JasperFx/alba/blob/master/src/Alba.Testing/Samples/JsonAndXml.cs#L7-L34' title='Snippet source file'>snippet source</a> | <a href='#snippet-sample_sending_json' title='Start of snippet'>anchor</a></sup>
 <!-- endSnippet -->
+
+## Sending Raw Json
+
+When you already have the JSON payload as a string — malformed-input tests, captured payloads,
+and the like — skip serialization and write it directly:
+
+```cs
+await host.Scenario(_ =>
+{
+    _.Post.RawJson("{\"name\": \"Max\", \"age\": 13}").ToUrl("/person");
+});
+```
+
+This writes the string to the request body verbatim and sets the `content-type` header to
+`application/json`.
 
 
 ## Reading Json
