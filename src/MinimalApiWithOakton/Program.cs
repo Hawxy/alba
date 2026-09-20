@@ -40,6 +40,12 @@ namespace MinimalApiWithOakton
                 return $"I ran a QUERY with value {body}";
             });
 
+            app.MapMethods("/api/options", ["OPTIONS"], (HttpContext context) =>
+            {
+                context.Response.Headers.Allow = "GET, POST, OPTIONS";
+                return Results.NoContent();
+            });
+
             app.MapGet("/sse/finite", () => TypedResults.ServerSentEvents(
                 Enumerable.Range(1, 3)
                     .Select(i => new SseItem<Counter>(new Counter { Number = i }, "count") { EventId = i.ToString() })

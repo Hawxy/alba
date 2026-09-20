@@ -82,6 +82,11 @@ public class Scenario : IUrlExpression
     /// </summary>
     public IUrlExpression Query => withMethod("QUERY");
 
+    /// <summary>
+    /// Specify an HTTP OPTIONS Url
+    /// </summary>
+    public IUrlExpression Options => withMethod("OPTIONS");
+
     private IUrlExpression withMethod(string method)
     {
         ConfigureHttpContext(context => context.HttpMethod(method));

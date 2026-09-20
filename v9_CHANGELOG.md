@@ -230,8 +230,9 @@ happen to contain the text "Error" now parse successfully.
   response body as `byte[]`, for endpoints that return files, images or other payloads that
   `ReadAsText()` would corrupt. Like the other readers they leave the body readable, so a scenario
   can assert on the bytes and still call `ReadAsJson<T>()` afterwards.
-- **HTTP QUERY support.** Scenarios can issue HTTP QUERY requests via `Scenario.Query`, matching
-  the existing verb properties (`x.Query.Url("/api/query")`).
+- **HTTP QUERY and OPTIONS support.** Scenarios can issue HTTP QUERY and OPTIONS requests via
+  `Scenario.Query` and `Scenario.Options`, matching the existing verb properties
+  (`x.Query.Url("/api/query")`, `x.Options.Url("/api/options")`).
 - **Time-travel testing with `TimeProviderOverride`.** A `FakeTimeProvider`-based extension that
   replaces the application's `TimeProvider` registration on every bootstrapping style. The
   extension is the clock: pass it to `AlbaHost.For(...)`, then drive time from the test with
