@@ -1,198 +1,53 @@
-﻿using System.Collections;
-using System.Diagnostics.CodeAnalysis;
-
 namespace Alba.Internal;
 
-internal sealed class LightweightCache<TKey, TValue> : IEnumerable<TValue> where TKey : notnull
+/// <summary>
+/// A dictionary that builds missing values on demand. Backs static MimeType state
+/// shared by every AlbaHost, so access is locked and enumeration order is stable
+/// </summary>
+internal sealed class LightweightCache<TKey, TValue> where TKey : notnull
 {
-    private readonly IDictionary<TKey, TValue> _values;
-
-    private Func<TValue, TKey> _getKey = delegate { throw new NotImplementedException(); };
-
-    private Func<TKey, TValue> _onMissing = delegate (TKey key) {
-        var message = $"Key '{key}' could not be found";
-        throw new KeyNotFoundException(message);
-    };
-
-    public LightweightCache()
-        : this(new Dictionary<TKey, TValue>())
-    {
-    }
+    private readonly Dictionary<TKey, TValue> _values = new();
+    private readonly Func<TKey, TValue> _onMissing;
+    private readonly object _lock = new();
 
     public LightweightCache(Func<TKey, TValue> onMissing)
-        : this(new Dictionary<TKey, TValue>(), onMissing)
-    {
-    }
-
-    public LightweightCache(IDictionary<TKey, TValue> dictionary, Func<TKey, TValue> onMissing)
-        : this(dictionary)
     {
         _onMissing = onMissing;
-    }
-
-    public LightweightCache(IDictionary<TKey, TValue> dictionary)
-    {
-        _values = dictionary;
-    }
-
-
-    public Func<TKey, TValue> OnMissing
-    {
-        set => _onMissing = value;
-    }
-
-    public Func<TValue, TKey> GetKey
-    {
-        get => _getKey;
-        set => _getKey = value;
-    }
-
-    public int Count => _values.Count;
-
-    public TValue? First
-    {
-        get
-        {
-            foreach (var pair in _values)
-            {
-                return pair.Value;
-            }
-
-            return default(TValue);
-        }
     }
 
     public TValue this[TKey key]
     {
         get
         {
-            if (!_values.TryGetValue(key, out TValue? value))
+            lock (_lock)
             {
-                value = _onMissing(key);
-
-                if (value != null)
+                if (!_values.TryGetValue(key, out var value))
                 {
-                    _values[key] = value;
-                }
-            }
+                    value = _onMissing(key);
 
-            return value;
+                    if (value != null)
+                    {
+                        _values[key] = value;
+                    }
+                }
+
+                return value;
+            }
         }
         set
         {
-            _values[key] = value;
-        }
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return ((IEnumerable<TValue>)this).GetEnumerator();
-    }
-
-    public IEnumerator<TValue> GetEnumerator()
-    {
-        return _values.Values.GetEnumerator();
-    }
-
-    /// <summary>
-    ///     Guarantees that the Cache has the default value for a given key.
-    ///     If it does not already exist, it's created.
-    /// </summary>
-    /// <param name="key"></param>
-    public void FillDefault(TKey key)
-    {
-        Fill(key, _onMissing(key));
-    }
-
-    public void Fill(TKey key, TValue value)
-    {
-        if (_values.ContainsKey(key))
-        {
-            return;
-        }
-
-        _values.Add(key, value);
-    }
-
-    public bool TryRetrieve(TKey key, [MaybeNullWhen(false)] out TValue value)
-    {
-        return _values.TryGetValue(key, out value);
-    }
-
-    public void Each(Action<TValue> action)
-    {
-        foreach (var pair in _values)
-        {
-            action(pair.Value);
-        }
-    }
-
-    public void Each(Action<TKey, TValue> action)
-    {
-        foreach (var pair in _values)
-        {
-            action(pair.Key, pair.Value);
-        }
-    }
-
-    public bool Has(TKey key)
-    {
-        return _values.ContainsKey(key);
-    }
-
-    public bool Exists(Predicate<TValue> predicate)
-    {
-        var returnValue = false;
-
-        Each(delegate (TValue value) { returnValue |= predicate(value); });
-
-        return returnValue;
-    }
-
-    public TValue? Find(Predicate<TValue> predicate)
-    {
-        foreach (var pair in _values)
-        {
-            if (predicate(pair.Value))
+            lock (_lock)
             {
-                return pair.Value;
+                _values[key] = value;
             }
         }
-
-        return default;
     }
 
     public TValue[] GetAll()
     {
-        var returnValue = new TValue[Count];
-        _values.Values.CopyTo(returnValue, 0);
-
-        return returnValue;
-    }
-
-    public void Remove(TKey key)
-    {
-        if (_values.ContainsKey(key))
+        lock (_lock)
         {
-            _values.Remove(key);
+            return _values.Values.ToArray();
         }
-    }
-
-    public void Clear()
-    {
-        _values.Clear();
-    }
-
-    public void WithValue(TKey key, Action<TValue> action)
-    {
-        if (_values.ContainsKey(key))
-        {
-            action(this[key]);
-        }
-    }
-
-    public void ClearAll()
-    {
-        _values.Clear();
     }
 }

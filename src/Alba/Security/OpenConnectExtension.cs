@@ -11,21 +11,19 @@ public abstract class OpenConnectExtension : IAlbaExtension
 {
     internal static readonly string OverrideKey = "alba_oidc_override";
 
-    private HttpClient _client = null!;
+    private HttpClient? _client;
     private DiscoveryDocumentResponse? _disco;
     private TokenResponse? _cached;
         
 
     void IDisposable.Dispose()
     {
-        _client.Dispose();
-        GC.SuppressFinalize(this);
+        _client?.Dispose();
     }
 
     ValueTask IAsyncDisposable.DisposeAsync()
     {
-        _client.Dispose();
-        GC.SuppressFinalize(this);
+        _client?.Dispose();
         return ValueTask.CompletedTask;
     }
 
@@ -72,7 +70,13 @@ public abstract class OpenConnectExtension : IAlbaExtension
         if (_disco == null)
             throw new InvalidOperationException(
                 "This operation is not possible without an existing OIDC discovery document");
-        return FetchToken(_client, _disco, tokenCustomization);
+        return FetchToken(client(), _disco, tokenCustomization);
+    }
+
+    private HttpClient client()
+    {
+        return _client ?? throw new InvalidOperationException(
+            $"The {GetType().Name} extension has not been started by an AlbaHost yet");
     }
 
     public abstract Task<TokenResponse> FetchToken(HttpClient client, DiscoveryDocumentResponse? disco,
@@ -82,10 +86,10 @@ public abstract class OpenConnectExtension : IAlbaExtension
     {
         if (scenario.Items.TryGetValue(OverrideKey, out var scenarioOverride))
         {
-            return await FetchToken(_client, _disco, scenarioOverride);
+            return await FetchToken(client(), _disco, scenarioOverride);
         }
 
-        _cached ??= await FetchToken(_client, _disco, null);
+        _cached ??= await FetchToken(client(), _disco, null);
 
         return _cached;
     }
